@@ -1,8 +1,9 @@
 import os
 import pickle
 import numpy as np
+import requests
 import pandas as pd
-from flask import Flask, request, jsonify
+from flask import Flask, render_template, request, jsonify
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
@@ -10,6 +11,17 @@ from sklearn.model_selection import train_test_split
 # Set random seed for reproducibility
 np.random.seed(42)
 
+# Define the form fields based on sample_patient dictionary
+SAMPLE_PATIENT_FIELDS = [
+    "Age",
+    "BMI",
+    "Blood_Pressure_Systolic",
+    "Cholesterol_LDL",
+    "Bone_Density_T_Score",
+    "Heart_Rate_Variability",
+    "Steps_Per_Day"
+]
+PREDICTION_API_URL = "http://localhost:5000/predict_risk"
 
 def generate_synthetic_data(num_patients: int = 30000) -> pd.DataFrame:
     """
@@ -216,6 +228,13 @@ def predict_risk():
 
     risk_mapping = {0: "Low", 1: "Moderate", 2: "High"}
     response = {
+        "Age": data["Age"],
+        "BMI": data["BMI"],
+        "Blood_Pressure_Systolic": data["Blood_Pressure_Systolic"],
+        "Cholesterol_LDL": data["Cholesterol_LDL"],
+        "Bone_Density_T_Score": data["Bone_Density_T_Score"],
+        "Heart_Rate_Variability": data["Heart_Rate_Variability"],
+        "Steps_Per_Day": data["Steps_Per_Day"],
         "Predicted_Cardio_Risk": risk_mapping[cardio_risk],
         "Predicted_Osteo_Risk": risk_mapping[osteo_risk],
         "Recommendations": []
@@ -223,17 +242,17 @@ def predict_risk():
 
     if cardio_risk == 2:
         response["Recommendations"].append(
-            "⚠️ High Cardiovascular Risk: Consider a heart-healthy diet, increase physical activity, and consult a cardiologist.")
+            "‼️ High Cardiovascular Risk: Consider a heart-healthy diet, increase physical activity, and consult a cardiologist.")
     elif cardio_risk == 1:
         response["Recommendations"].append(
-            "🟡 Moderate Cardiovascular Risk: Monitor blood pressure and cholesterol levels, engage in regular exercise, and follow a balanced diet.")
+            "⚠️ Moderate Cardiovascular Risk: Monitor blood pressure and cholesterol levels, engage in regular exercise, and follow a balanced diet.")
 
     if osteo_risk == 2:
         response["Recommendations"].append(
-            "⚠️ High Osteoporosis Risk: Increase calcium and vitamin D intake, start weight-bearing exercises, and consult an endocrinologist for bone health management.")
+            "‼️ High Osteoporosis Risk: Increase calcium and vitamin D intake, start weight-bearing exercises, and consult an endocrinologist for bone health management.")
     elif osteo_risk == 1:
         response["Recommendations"].append(
-            "🟡 Moderate Osteoporosis Risk: Monitor bone density, ensure adequate calcium intake, and engage in regular strength training.")
+            "⚠️ Moderate Osteoporosis Risk: Monitor bone density, ensure adequate calcium intake, and engage in regular strength training.")
 
     return jsonify(response)
 
@@ -243,6 +262,21 @@ def retrain_models():
     train_models()
     return jsonify({"message": "Models retrained successfully!"})
 
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    risk_data = None
+
+    if request.method == 'POST':
+        patient_data = {field: request.form.get(field, '') for field in SAMPLE_PATIENT_FIELDS}
+        response = requests.post(PREDICTION_API_URL, json=patient_data)
+
+        if response.status_code == 200:
+            risk_data = response.json()
+        else:
+            risk_data = {"error": "Failed to fetch prediction."}
+
+    return render_template('index.html', fields=SAMPLE_PATIENT_FIELDS, risk_data=risk_data)
 
 if __name__ == '__main__':
     if (
